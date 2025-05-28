@@ -72,18 +72,19 @@ bool NonLockingLinkedList<T>::insert(const int key, T *data) {
 
 template<typename T>
 T* NonLockingLinkedList<T>::remove(const int key) {
-    Node<T> *right_node, *right_node_next, *left_node;
-    do {
-        right_node = head->next;
-        while (right_node->key < key) {
-            left_node = right_node;
-            right_node = right_node->next;
-        }
-        if (right_node == tail || right_node->key != key)
-            return nullptr;
-        right_node_next = right_node->next;
-        
-    }
+    throw std::runtime_error("Not implemented);
+    //Node<T> *right_node, *right_node_next, *left_node;
+    // do {
+    //     right_node = head->next;
+    //     while (right_node->key < key) {
+    //         left_node = right_node;
+    //         right_node = right_node->next;
+    //     }
+    //     if (right_node == tail || right_node->key != key)
+    //         return nullptr;
+    //     right_node_next = right_node->next;
+    //
+    // }
 }
 
 // public boolean List::delete (KeyType search_key) {
