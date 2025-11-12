@@ -27,7 +27,7 @@ template<typename T>
 class NonLockingLinkedList {
     // it's sorted
 public:
-    bool insert(int key, T* data);
+    bool insert(int key, T *data);
     T* remove(int key);
     T* get(int key);
     ~NonLockingLinkedList();
@@ -36,17 +36,17 @@ public:
     std::vector<T*> to_array(); // DEBUG
     std::vector<int> keys_to_array(); // DEBUG
 private:
-    NonLockingNode<T>* head = new NonLockingNode<T>(0, nullptr);
-    NonLockingNode<T>* tail = new NonLockingNode<T>(INT_MAX, nullptr);
-    NonLockingNode<T>* search(int search_key, NonLockingNode<T>** left_node);
-    static NonLockingNode<T>* get_marked_reference(NonLockingNode<T>* node);
-    static NonLockingNode<T>* get_unmarked_reference(NonLockingNode<T>* node);
+    NonLockingNode<T> *head = new NonLockingNode<T>(0, nullptr);
+    NonLockingNode<T> *tail = new NonLockingNode<T>(INT_MAX, nullptr);
+    NonLockingNode<T> *search(int search_key, NonLockingNode<T>** left_node);
+    static NonLockingNode<T> *get_marked_reference(NonLockingNode<T> *node);
+    static NonLockingNode<T> *get_unmarked_reference(NonLockingNode<T> *node);
 };
 
 template<typename T>
 bool NonLockingLinkedList<T>::insert(const int key, T *data) {
 
-    NonLockingNode<T>* left_node, *right_node, *newNode = new NonLockingNode<T>(key, data);
+    NonLockingNode<T> *left_node, *right_node, *newNode = new NonLockingNode<T>(key, data);
     do {
         right_node = search(key, &left_node);
 
@@ -57,7 +57,7 @@ bool NonLockingLinkedList<T>::insert(const int key, T *data) {
 
         newNode->next.store(right_node);
 
-    } while (!left_node->next.compare_exchange_weak(right_node, newNode));
+    } while (!left_node->next.compare_exchange_weak(right_node, newNode, std::memory_order_relaxed));
     return true;
 }
 
@@ -71,12 +71,12 @@ T* NonLockingLinkedList<T>::remove(const int key) {
         right_node_next = right_node->next.load();
         // is marked reference
         if (!right_node_next->marked_for_deletion.load()) {
-            if (right_node->next.compare_exchange_strong(right_node_next, right_node))
+            if (right_node->next.compare_exchange_strong(right_node_next, right_node, std::memory_order_relaxed))
                 break;
         }
 
     } while (true);
-    if (!left_node->next.compare_exchange_strong(right_node, right_node_next))
+    if (!left_node->next.compare_exchange_strong(right_node, right_node_next, std::memory_order_relaxed))
         right_node = search(right_node->key, &left_node);
     return right_node->data;
 }
@@ -140,12 +140,12 @@ std::vector<int> NonLockingLinkedList<T>::keys_to_array() {
 }
 
 template<typename T>
-NonLockingNode<T> * NonLockingLinkedList<T>::search(const int search_key, NonLockingNode<T> **left_node) {
-    NonLockingNode<T>* left_node_next, *right_node;
+NonLockingNode<T>* NonLockingLinkedList<T>::search(const int search_key, NonLockingNode<T> **left_node) {
+    NonLockingNode<T> *left_node_next, *right_node;
 
     search_again:
         while (true) {
-            NonLockingNode<T>* t = head, *t_next = head->next.load();
+            NonLockingNode<T> *t = head, *t_next = head->next.load();
             // 1: Find left_node and right_node
             do {
                 if (!t_next->marked_for_deletion.load()) {
@@ -167,7 +167,7 @@ NonLockingNode<T> * NonLockingLinkedList<T>::search(const int search_key, NonLoc
             }
 
             // 3. Remove one or more marked nodes
-            if ((*left_node)->next.compare_exchange_strong(left_node_next, right_node)) {
+            if ((*left_node)->next.compare_exchange_strong(left_node_next, right_node, std::memory_order_relaxed)) {
                 if (right_node != tail && right_node->next.load()->marked_for_deletion.load())
                     goto search_again;
                 return right_node;

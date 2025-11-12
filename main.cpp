@@ -9,7 +9,7 @@ auto ll = LinkedList<int>();
 auto nll = NonLockingLinkedList<int>();
 std::mutex m;
 
-constexpr int amount_to_insert = 1000;
+constexpr int amount_to_insert = 10000;
 
 
 void add_values_to_list(const int id) {
@@ -40,8 +40,8 @@ int main() {
     for (auto i = 0; i < threads; ++i)
         t[i] = std::thread(add_values_to_list, i);
 
-    for (auto i = 0; i < threads; ++i)
-        t[i].join();
+    for (auto & i : t)
+        i.join();
     auto end = std::chrono::steady_clock::now();
     std::cout << "Mutex time for " << threads << " threads:" << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << '\n';
 
@@ -54,8 +54,8 @@ int main() {
     for (auto i = 0; i < threads; ++i)
         t[i] = std::thread(add_values_to_list_nonlocking, i);
 
-    for (auto i = 0; i < threads; ++i)
-        t[i].join();
+    for (auto & i : t)
+        i.join();
     end = std::chrono::steady_clock::now();
 
     std::cout << "Nonlocking time for " << threads << " threads:" << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << '\n';
