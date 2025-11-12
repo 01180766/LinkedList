@@ -1,99 +1,120 @@
-//
-// Created by Piotr Czarnecki on 5/28/25.
-//
-// Na postawie: A Pragmatic Implementation of Non-Blocking Linked Lists
-// Autorstwa: Timothy L.Harris
-// Źródło: https://www.cl.cam.ac.uk/research/srg/netos/papers/2001-caslists.pdf
+// Based on: A Pragmatic Implementation of Non-Blocking Linked Lists
+// By: Timothy L.Harris
+// Source: https://www.cl.cam.ac.uk/research/srg/netos/papers/2001-caslists.pdf
 // doi/10.5555/645958.676105
-
 #ifndef NONLOCKINGNonLockingLinkedList_H
 #define NONLOCKINGNonLockingLinkedList_H
 #include <atomic>
-#include <vector>
+#include <cstdint>
 #include <climits>
 #include <iostream>
+#include <vector>
+#include <cassert>
+
+// Forward-declare for pointer-tag helpers
+template<typename T>
+struct NBNode;
 
 template<typename T>
-struct NonLockingNode {
-    long long key;
-    T *data;
-    std::atomic<NonLockingNode*> next = nullptr;
-    std::atomic<bool> marked_for_deletion = false;
-    NonLockingNode(const long long key, T* data) : key(key), data(data) {}
-};
-
-// TODO: Figure out memory orders
-
-template<typename T>
-class NonLockingLinkedList {
-    // it's sorted
+class alignas(std::hardware_destructive_interference_size) NonLockingLinkedList {
 public:
+    NonLockingLinkedList();
+    ~NonLockingLinkedList();
+
     bool insert(long long key, T *data);
     T* remove(long long key);
     T* get(long long key);
-    ~NonLockingLinkedList();
-    NonLockingLinkedList();
+
+    // DEBUG
     void printall();
-    std::vector<T*> to_array(); // DEBUG
     std::vector<long long> keys_to_array(); // DEBUG
 private:
-    NonLockingNode<T> *head = new NonLockingNode<T>(0, nullptr);
-    NonLockingNode<T> *tail = new NonLockingNode<T>(LONG_LONG_MAX, nullptr);
-    NonLockingNode<T> *search(long long search_key, NonLockingNode<T> **left_node);
-    static NonLockingNode<T> *get_marked_reference(NonLockingNode<T> *node);
-    static NonLockingNode<T> *get_unmarked_reference(NonLockingNode<T> *node);
+    NBNode<T> *head;
+    NBNode<T> *tail;
+    NBNode<T>* search(long long search_key, NBNode<T>** left);
+
+    // Helpers
+    static NBNode<T>* mark_ptr(NBNode<T>* p) {
+        return reinterpret_cast<NBNode<T>*>(reinterpret_cast<std::uintptr_t>(p) | 1ULL);
+    }
+    static NBNode<T>* unmark_ptr(NBNode<T>* p) {
+        return reinterpret_cast<NBNode<T>*>(reinterpret_cast<std::uintptr_t>(p) & ~1ULL);
+    }
+    static bool is_marked(NBNode<T>* p) {
+        return (reinterpret_cast<std::uintptr_t>(p) & 1ULL) != 0;
+    }
+};
+
+// Node structure: key, data pointer, atomic next pointer (next may have low bit set for 'marked')
+template<typename T>
+struct NBNode {
+    long long key;
+    T* data;
+    std::atomic<NBNode<T>*> next;
+
+    NBNode(const long long k, T* d) : key(k), data(d), next(nullptr) {}
 };
 
 template<typename T>
+NonLockingLinkedList<T>::NonLockingLinkedList() {
+    tail = new NBNode<T>(LLONG_MAX, nullptr);
+    head = new NBNode<T>(LLONG_MIN, nullptr);
+    head->next.store(tail, std::memory_order_relaxed);
+}
+
+template<typename T>
 bool NonLockingLinkedList<T>::insert(const long long key, T *data) {
+    auto *newNode = new NBNode<T>(key, data);
+    while (true) {
+        NBNode<T> *left, *right = search(key, &left);
 
-    NonLockingNode<T> *left_node, *right_node, *newNode = new NonLockingNode<T>(key, data);
-    do {
-        right_node = search(key, &left_node);
-
-        if (right_node != tail && right_node->key == key) {
+        if (right != tail && right->key == key) {
             delete newNode;
             return false;
         }
 
-        newNode->next.store(right_node);
+        newNode->next.store(right, std::memory_order_relaxed);
 
-    } while (!left_node->next.compare_exchange_weak(right_node, newNode, std::memory_order_relaxed));
-    return true;
+        if (left->next.compare_exchange_strong(right, newNode,std::memory_order_acq_rel,std::memory_order_acquire))
+            return true;
+    }
 }
+
 
 template<typename T>
 T* NonLockingLinkedList<T>::remove(const long long key) {
-    NonLockingNode<T> *left_node, *right_node, *right_node_next;
-    do {
-        right_node = search(key, &left_node);
-        if (right_node == tail || right_node->key != key)
-            return nullptr;
-        right_node_next = right_node->next.load();
-        // is marked reference
-        if (!right_node_next->marked_for_deletion.load()) {
-            if (right_node->next.compare_exchange_strong(right_node_next, right_node, std::memory_order_relaxed))
-                break;
+    while (true) {
+        NBNode<T> *left, *right = search(key, &left);
+
+        if (right == tail || right->key != key) return nullptr;
+
+        auto *right_next = right->next.load(std::memory_order_acquire);
+
+        if (is_marked(right_next)) {
+            left->next.compare_exchange_strong(right,unmark_ptr(right_next),std::memory_order_acq_rel,std::memory_order_acquire);
+            continue;
         }
 
-    } while (true);
-    if (!left_node->next.compare_exchange_strong(right_node, right_node_next, std::memory_order_relaxed))
-        right_node = search(right_node->key, &left_node);
-    return right_node->data;
+        auto *marked = mark_ptr(right_next);
+        if (right->next.compare_exchange_strong(right_next,marked,std::memory_order_acq_rel,std::memory_order_acquire)) {
+            left->next.compare_exchange_strong(right,right_next,std::memory_order_acq_rel,std::memory_order_acquire);
+            return right->data;
+        }
+    }
 }
 
 template<typename T>
 T* NonLockingLinkedList<T>::get(const long long key) {
-    NonLockingNode<T> *left_node;
-    auto *right_node = search(key, &left_node);
-    if (right_node == tail || right_node->key != key)
-        return nullptr;
-    return right_node->data;
+    NBNode<T> *left, *right = search(key, &left);
+    if (right == tail || right->key != key) return nullptr;
+    auto *next = right->next.load(std::memory_order_acquire);
+    if (is_marked(next)) return nullptr;
+    return right->data;
 }
 
 template<typename T>
 NonLockingLinkedList<T>::~NonLockingLinkedList() {
-    NonLockingNode<T> *cur = head, *next = nullptr;
+    NBNode<T> *cur = head, *next = nullptr;
     while (cur != nullptr) {
         next = cur->next;
         delete cur;
@@ -102,90 +123,52 @@ NonLockingLinkedList<T>::~NonLockingLinkedList() {
 }
 
 template<typename T>
-NonLockingLinkedList<T>::NonLockingLinkedList() {
-    head->next.store(tail);
-}
-
-template<typename T>
 void NonLockingLinkedList<T>::printall() {
-    auto cur = head;
-    while (cur != nullptr) {
+    auto *cur = unmark_ptr(head->next.load(std::memory_order_acquire));
+    while (cur != tail) {
         std::cout << cur->key << ' ';
-        cur = cur->next.load(std::memory_order_relaxed);
+        cur = unmark_ptr(cur->next.load(std::memory_order_acquire));
     }
     std::cout << '\n';
 }
 
 template<typename T>
-std::vector<T*> NonLockingLinkedList<T>::to_array() {
-    std::vector<T*> vec;
-    auto cur = head->next.load();
-    while (cur != nullptr) {
-        vec.push_back(cur->data);
-        cur = cur->next.load();
-    }
-    vec.pop_back();
-    return vec;
-}
-
-template<typename T>
 std::vector<long long> NonLockingLinkedList<T>::keys_to_array() {
     std::vector<long long> vec;
-    auto cur = head->next.load();
-    while (cur != nullptr) {
+    auto *cur = unmark_ptr(head->next.load(std::memory_order_acquire));
+    while (cur != tail) {
         vec.push_back(cur->key);
-        cur = cur->next.load();
+        cur = unmark_ptr(cur->next.load(std::memory_order_acquire));
     }
-    vec.pop_back();
     return vec;
 }
 
 template<typename T>
-NonLockingNode<T>* NonLockingLinkedList<T>::search(const long long search_key, NonLockingNode<T> **left_node) {
-    NonLockingNode<T> *left_node_next, *right_node;
+NBNode<T>* NonLockingLinkedList<T>::search(const long long search_key, NBNode<T> **left) {
+retry:
+    NBNode<T> *left_node = head, * left_next = head->next.load(std::memory_order_acquire), *t = left_next;
 
-    search_again:
-        while (true) {
-            NonLockingNode<T> *t = head, *t_next = head->next.load();
-            // 1: Find left_node and right_node
-            do {
-                if (!t_next->marked_for_deletion.load()) {
-                    *left_node = t;
-                    left_node_next = t_next;
-                }
-                t = get_unmarked_reference(t_next);
-                if (t == tail) break;
-                t_next = t->next.load();
+    while (true) {
+        NBNode<T> *t_next = t->next.load(std::memory_order_acquire);
 
-            } while (t_next->marked_for_deletion.load() || t->key < search_key);
-            right_node = t;
+        while (is_marked(t_next)) {
+            NBNode<T>* unmarked_t_next = unmark_ptr(t_next);
 
-            // 2: Check nodes are adjacent
-            if (left_node_next == right_node) {
-                if (right_node != tail && right_node->next.load()->marked_for_deletion.load())
-                    goto search_again;
-                return right_node;
-            }
+            if (!left_node->next.compare_exchange_strong(t,unmarked_t_next,std::memory_order_acq_rel,std::memory_order_acquire))
+                goto retry;
 
-            // 3. Remove one or more marked nodes
-            if ((*left_node)->next.compare_exchange_strong(left_node_next, right_node, std::memory_order_relaxed)) {
-                if (right_node != tail && right_node->next.load()->marked_for_deletion.load())
-                    goto search_again;
-                return right_node;
-            }
+            t = unmarked_t_next;
+            t_next = t->next.load(std::memory_order_acquire);
         }
-}
 
-template<typename T>
-NonLockingNode<T> * NonLockingLinkedList<T>::get_marked_reference(NonLockingNode<T> *node) {
-    node->marked_for_deletion.store(true);
-    return node;
-}
+        if (t == tail || t->key >= search_key) {
+            *left = left_node;
+            return t;
+        }
 
-template<typename T>
-NonLockingNode<T> * NonLockingLinkedList<T>::get_unmarked_reference(NonLockingNode<T> *node) {
-    node->marked_for_deletion.store(false);
-    return node;
+        left_node = t;
+        t = t_next;
+    }
 }
 
 #endif //NONLOCKINGNonLockingLinkedList_H
