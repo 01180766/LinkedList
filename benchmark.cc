@@ -30,8 +30,8 @@ static void BM_INSERTS_NONLOCKING(benchmark::State &state) {
     }
 }
 
-BENCHMARK(BM_INSERTS_MUTEX)->Threads(CORE_COUNT)->Arg(10'000)->UseRealTime();
+BENCHMARK(BM_INSERTS_MUTEX)->ThreadRange(1,CORE_COUNT)->Arg(10'000)->UseRealTime();
 
-BENCHMARK(BM_INSERTS_NONLOCKING)->Threads(CORE_COUNT)->Arg(10'000)->UseRealTime();
+BENCHMARK(BM_INSERTS_NONLOCKING)->ThreadRange(1,CORE_COUNT)->Arg(10'000)->UseRealTime();
 
 BENCHMARK_MAIN();

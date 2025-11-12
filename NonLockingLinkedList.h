@@ -16,7 +16,7 @@ template<typename T>
 struct NBNode;
 
 template<typename T>
-class alignas(std::hardware_destructive_interference_size) NonLockingLinkedList {
+class NonLockingLinkedList {
 public:
     NonLockingLinkedList();
     ~NonLockingLinkedList();
