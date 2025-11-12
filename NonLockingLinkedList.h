@@ -11,14 +11,15 @@
 #include <atomic>
 #include <vector>
 #include <climits>
+#include <iostream>
 
 template<typename T>
 struct NonLockingNode {
-    int key;
-    T* data;
-    std::atomic<NonLockingNode*> next;
-    std::atomic<bool> marked_for_deletion;
-    NonLockingNode(const int key, T* data) : key(key), data(data), next(nullptr), marked_for_deletion(false) {}
+    long long key;
+    T *data;
+    std::atomic<NonLockingNode*> next = nullptr;
+    std::atomic<bool> marked_for_deletion = false;
+    NonLockingNode(const long long key, T* data) : key(key), data(data) {}
 };
 
 // TODO: Figure out memory orders
@@ -27,24 +28,24 @@ template<typename T>
 class NonLockingLinkedList {
     // it's sorted
 public:
-    bool insert(int key, T *data);
-    T* remove(int key);
-    T* get(int key);
+    bool insert(long long key, T *data);
+    T* remove(long long key);
+    T* get(long long key);
     ~NonLockingLinkedList();
     NonLockingLinkedList();
     void printall();
     std::vector<T*> to_array(); // DEBUG
-    std::vector<int> keys_to_array(); // DEBUG
+    std::vector<long long> keys_to_array(); // DEBUG
 private:
     NonLockingNode<T> *head = new NonLockingNode<T>(0, nullptr);
-    NonLockingNode<T> *tail = new NonLockingNode<T>(INT_MAX, nullptr);
-    NonLockingNode<T> *search(int search_key, NonLockingNode<T>** left_node);
+    NonLockingNode<T> *tail = new NonLockingNode<T>(LONG_LONG_MAX, nullptr);
+    NonLockingNode<T> *search(long long search_key, NonLockingNode<T> **left_node);
     static NonLockingNode<T> *get_marked_reference(NonLockingNode<T> *node);
     static NonLockingNode<T> *get_unmarked_reference(NonLockingNode<T> *node);
 };
 
 template<typename T>
-bool NonLockingLinkedList<T>::insert(const int key, T *data) {
+bool NonLockingLinkedList<T>::insert(const long long key, T *data) {
 
     NonLockingNode<T> *left_node, *right_node, *newNode = new NonLockingNode<T>(key, data);
     do {
@@ -62,7 +63,7 @@ bool NonLockingLinkedList<T>::insert(const int key, T *data) {
 }
 
 template<typename T>
-T* NonLockingLinkedList<T>::remove(const int key) {
+T* NonLockingLinkedList<T>::remove(const long long key) {
     NonLockingNode<T> *left_node, *right_node, *right_node_next;
     do {
         right_node = search(key, &left_node);
@@ -82,7 +83,7 @@ T* NonLockingLinkedList<T>::remove(const int key) {
 }
 
 template<typename T>
-T* NonLockingLinkedList<T>::get(const int key) {
+T* NonLockingLinkedList<T>::get(const long long key) {
     NonLockingNode<T> *left_node;
     auto *right_node = search(key, &left_node);
     if (right_node == tail || right_node->key != key)
@@ -92,7 +93,7 @@ T* NonLockingLinkedList<T>::get(const int key) {
 
 template<typename T>
 NonLockingLinkedList<T>::~NonLockingLinkedList() {
-    NonLockingNode<T>* cur = head, *next = nullptr;
+    NonLockingNode<T> *cur = head, *next = nullptr;
     while (cur != nullptr) {
         next = cur->next;
         delete cur;
@@ -128,8 +129,8 @@ std::vector<T*> NonLockingLinkedList<T>::to_array() {
 }
 
 template<typename T>
-std::vector<int> NonLockingLinkedList<T>::keys_to_array() {
-    std::vector<int> vec;
+std::vector<long long> NonLockingLinkedList<T>::keys_to_array() {
+    std::vector<long long> vec;
     auto cur = head->next.load();
     while (cur != nullptr) {
         vec.push_back(cur->key);
@@ -140,7 +141,7 @@ std::vector<int> NonLockingLinkedList<T>::keys_to_array() {
 }
 
 template<typename T>
-NonLockingNode<T>* NonLockingLinkedList<T>::search(const int search_key, NonLockingNode<T> **left_node) {
+NonLockingNode<T>* NonLockingLinkedList<T>::search(const long long search_key, NonLockingNode<T> **left_node) {
     NonLockingNode<T> *left_node_next, *right_node;
 
     search_again:
@@ -186,6 +187,5 @@ NonLockingNode<T> * NonLockingLinkedList<T>::get_unmarked_reference(NonLockingNo
     node->marked_for_deletion.store(false);
     return node;
 }
-
 
 #endif //NONLOCKINGNonLockingLinkedList_H

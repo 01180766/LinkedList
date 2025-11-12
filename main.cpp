@@ -1,69 +1,81 @@
-#include <iostream>
+#include <mutex>
+#include <shared_mutex>
 #include <thread>
-
-#include "NonLockingLinkedList.h"
 #include "LinkedList.h"
+#include "NonLockingLinkedList.h"
 
+constexpr unsigned int TEST_SIZE = 5'000;
+std::shared_mutex m;
+long long placeholder = 1;
 
-auto ll = LinkedList<int>();
-auto nll = NonLockingLinkedList<int>();
-std::mutex m;
-
-constexpr int amount_to_insert = 10000;
-
-
-void add_values_to_list(const int id) {
-    for (auto i = 0; i < amount_to_insert; i+=2) {
-        m.lock();
-        ll.insert(i + id, new int(4));
-        m.unlock();
+void add_values_to_list(LinkedList<long long> &ll, const long long id, const unsigned int test_size) {
+    for (auto i = 0; i < test_size; ++i) {
+        m.lock_shared();
+        ll.insert(i + id * test_size, &placeholder);
+        m.unlock_shared();
+        std::cout << "Added " << i + id * test_size << " element\n";
     }
 }
 
-void add_values_to_list_nonlocking(const int id) {
-    for (auto i = 0; i < amount_to_insert; i+=2)
-        nll.insert(i + id, new int(4));
+void add_values_to_list_nonlocking(NonLockingLinkedList<long long> &nll, const long long id, const unsigned int test_size) {
+    for (auto i = 0; i < test_size; ++i) {
+        nll.insert(i + id * test_size, &placeholder);
+        std::cout << "Added " << i + id * test_size << " element\n";
+    }
 }
+
 
 int main() {
+    // Correctness tests
+    std::cout << "Declared core count: " << std::thread::hardware_concurrency() << '\n';
+    const auto thread_count = std::thread::hardware_concurrency() - 1;
 
-    // for (auto i = 0; i < 100; ++i) {
-    //     ll.insert(rand() % 100, new int(4));
-    //     ll.printall();
-    //
-    constexpr size_t threads = 4;
+    std::thread threads[thread_count];
+    auto ll = LinkedList<long long>();
 
+    for (auto i = 0; i < thread_count; ++i)
+        threads[i] = std::thread(add_values_to_list, std::ref(ll), i, TEST_SIZE);
 
-    std::thread t[threads];
+    for (auto &thread : threads)
+        thread.join();
 
-    auto begin = std::chrono::steady_clock::now();
-    for (auto i = 0; i < threads; ++i)
-        t[i] = std::thread(add_values_to_list, i);
-
-    for (auto & i : t)
-        i.join();
-    auto end = std::chrono::steady_clock::now();
-    std::cout << "Mutex time for " << threads << " threads:" << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << '\n';
-
-    for (auto const array = ll.keys_to_array(); auto const val: array) {
-        delete ll.remove(val);
-        //ll.printall();
+    // Try to find all values
+    for (auto i = 0; i < thread_count * TEST_SIZE; ++i) {
+        if (auto res = ll.get(i)) {
+            if (res != &placeholder) {
+                std::cerr << "Incorrect value held under the key " << i << " : " << res << std::endl;
+                return EXIT_FAILURE;
+            }
+        }
+        else {
+            std::cerr << "Incorrect value held under the key" << i << " : " << res << std::endl;
+            return EXIT_FAILURE;
+        }
     }
+    std::cerr << "Tests passed for locked implementation" << '\n';
 
-    begin = std::chrono::steady_clock::now();
-    for (auto i = 0; i < threads; ++i)
-        t[i] = std::thread(add_values_to_list_nonlocking, i);
+    auto nll = NonLockingLinkedList<long long>();
+    for (auto i = 0; i < thread_count; ++i)
+        threads[i] = std::thread(add_values_to_list_nonlocking, std::ref(nll), i, TEST_SIZE);
 
-    for (auto & i : t)
-        i.join();
-    end = std::chrono::steady_clock::now();
+    for (auto &thread : threads)
+        thread.join();
 
-    std::cout << "Nonlocking time for " << threads << " threads:" << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << '\n';
-
-    for (auto const array = nll.keys_to_array(); auto const val: array) {
-        delete nll.remove(val);
-        //nll.printall();
+    // Try to find all values
+    for (auto i = 0; i < thread_count * TEST_SIZE; ++i) {
+        if (auto res = nll.get(i)) {
+            if (res != &placeholder) {
+                std::cerr << "Incorrect value held under the key " << i << " : " << res << std::endl;
+                return EXIT_FAILURE;
+            }
+        }
+        else {
+            std::cerr << "Incorrect value held under the key" << i << " : " << res << std::endl;
+            return EXIT_FAILURE;
+        }
+        std::cout << "Found element " << i << std::endl;
     }
+    std::cerr << "Tests passed for non-locking implementation" << '\n';
 
 
     return EXIT_SUCCESS;

@@ -8,4 +8,5 @@ SET( CMAKE_CXX_FLAGS "-Ofast -DNDEBUG -march=native")
 add_executable(LinkedList main.cpp
         LinkedList.h
         NonLockingLinkedList.h
+        benchmark.cc
 )

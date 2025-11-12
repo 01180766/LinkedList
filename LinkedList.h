@@ -10,48 +10,48 @@
 
 template<typename T>
 struct Node {
-    int key;
+    long long key;
     T* data;
     Node* next = nullptr;
-    Node(const int key, T* data) : key(key), data(data) {}
+    Node(const int key, T *data) : key(key), data(data) {}
 };
 
 template<typename T>
 class LinkedList {
     // it's sorted
 public:
-    bool insert(int key, T* data);
-    T* remove(int key);
-    T* get(int key);
+    bool insert(long long key, T* data);
+    T* remove(long long key);
+    T* get(long long key);
     ~LinkedList();
     LinkedList();
     void printall();
     std::vector<T*> to_array();
-    std::vector<int> keys_to_array();
+    std::vector<long long> keys_to_array();
 private:
     Node<T>* head = new Node<T>(0, nullptr);
     Node<T>* tail = new Node<T>(INT_MAX, nullptr);
 };
 
 template<typename T>
-bool LinkedList<T>::insert(const int key, T *data) {
+bool LinkedList<T>::insert(const long long key, T *data) {
     // Throw error if same value found or something
     auto newNode = new Node<T>(key, data);
     auto *cur = head;
-    while (cur->next->key < key) {
+    while (cur->next->key < key)
         cur = cur->next;
-    }
+
     newNode->next = cur->next;
     cur->next = newNode;
     return true;
 }
 
 template<typename T>
-T* LinkedList<T>::remove(const int key) {
+T* LinkedList<T>::remove(const long long key) {
     auto prev = head;
-    while (prev->next->key < key) {
+    while (prev->next->key < key)
         prev = prev->next;
-    }
+
     if (prev->next->key == key) {
         auto temp = prev->next;
         prev->next = temp->next;
@@ -63,7 +63,7 @@ T* LinkedList<T>::remove(const int key) {
 }
 
 template<typename T>
-T* LinkedList<T>::get(const int key) {
+T* LinkedList<T>::get(const long long key) {
     auto cur = head->next;
     while (cur->key < key)
         cur = cur->next;
@@ -74,7 +74,7 @@ T* LinkedList<T>::get(const int key) {
 
 template<typename T>
 LinkedList<T>::~LinkedList() {
-    Node<T>* cur = head, *next = nullptr;
+    Node<T> *cur = head, *next = nullptr;
     while (cur != nullptr) {
         next = cur->next;
         delete cur;
@@ -110,8 +110,8 @@ std::vector<T*> LinkedList<T>::to_array() {
 }
 
 template<typename T>
-std::vector<int> LinkedList<T>::keys_to_array() {
-    std::vector<int> vec;
+std::vector<long long> LinkedList<T>::keys_to_array() {
+    std::vector<long long> vec;
     auto cur = head->next;
     while (cur != nullptr) {
         vec.push_back(cur->key);
