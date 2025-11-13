@@ -9,14 +9,12 @@
 #include <climits>
 #include <iostream>
 #include <vector>
-#include <cassert>
 
-// Forward-declare for pointer-tag helpers
 template<typename T>
 struct NBNode;
 
 template<typename T>
-class NonLockingLinkedList {
+class NonLockingLinkedList final {
 public:
     NonLockingLinkedList();
     ~NonLockingLinkedList();

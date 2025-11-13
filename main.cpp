@@ -1,18 +1,13 @@
-#include <mutex>
-#include <shared_mutex>
 #include <thread>
 #include "LinkedList.h"
 #include "NonLockingLinkedList.h"
 
 constexpr unsigned int TEST_SIZE = 5'000;
-std::shared_mutex m;
 long long placeholder = 1;
 
 void add_values_to_list(LinkedList<long long> &ll, const long long id, const unsigned int test_size) {
     for (auto i = 0; i < test_size; ++i) {
-        m.lock_shared();
         ll.insert(i + id * test_size, &placeholder);
-        m.unlock_shared();
         std::cout << "Added " << i + id * test_size << " element\n";
     }
 }
